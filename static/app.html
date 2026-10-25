@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DriftGuard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script src="/static/tw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="max-w-[1200px] mx-auto px-6 pb-16">
+  <nav class="mt-6 bg-white rounded-full shadow-clay px-4 py-3 flex flex-wrap items-center gap-2 sticky top-4 z-20">
+    <div class="flex items-center gap-2 pr-2">
+      <div class="w-9 h-9 rounded-full bg-butter border-[3px] border-ink grid place-items-center font-display font-extrabold">D</div>
+      <span class="font-display font-extrabold text-xl tracking-tight">DriftGuard</span>
+    </div>
+    <div id="tabs" class="flex flex-wrap gap-1">
+      <button data-tab="overview" class="nav-item">Overview</button><button data-tab="agents" class="nav-item">Agents</button>
+      <button data-tab="run" class="nav-item">Run a task</button><button data-tab="docs" class="nav-item">Documents</button>
+      <button data-tab="gov" class="nav-item">Governance</button><button data-tab="api" class="nav-item">API</button>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="llm" class="badge"></span>
+      <div id="avatar" class="w-9 h-9 rounded-full bg-sky border-[3px] border-ink grid place-items-center font-bold"></div>
+      <button id="logout" class="btn-secondary !py-1.5 !px-4 text-sm">Log out</button>
+    </div>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section data-panel="overview" class="tab-panel">
+    <div class="grid md:grid-cols-2 gap-8 mt-10 items-center">
+      <div><p class="eyebrow" id="org"></p>
+        <h1 class="font-display font-extrabold text-5xl leading-[1.05] tracking-tight mt-2">Valid token.<br><span class="swipe">Wrong behavior.</span></h1>
+        <p class="text-muted mt-4 max-w-md">Every tool call your agents make is checked against their declared role, their learned baseline and what they just read.</p></div>
+      <div class="grid grid-cols-2 gap-4" id="kpis"></div>
+    </div>
+    <div id="empty" class="hidden card mt-10 !bg-cream-yellow !border-0 !shadow-none">
+      <h3 class="font-display font-extrabold text-2xl">Your workspace is empty</h3>
+      <p class="mt-1">Register your first agent, give it a task, and watch the gateway score each action.</p>
+      <button class="btn-primary mt-4" onclick="tab('agents')">→ Register an agent</button></div>
+    <div id="agent-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-10"></div>
+    <div class="grid lg:grid-cols-5 gap-5 mt-8">
+      <div class="card lg:col-span-2 !p-4"><div class="flex items-center justify-between px-2 pb-3">
+        <h3 class="font-display font-extrabold text-xl">Gateway feed</h3><span class="text-xs text-muted">click a row</span></div>
+        <div id="feed" class="flex flex-col gap-2 max-h-[560px] overflow-y-auto pr-1"></div></div>
+      <div class="card lg:col-span-3 relative" id="detail"></div>
+    </div>
+    <div class="grid lg:grid-cols-5 gap-5 mt-5">
+      <div class="card lg:col-span-3"><h3 class="font-display font-extrabold text-xl">Risk over time</h3><div class="h-64 mt-3"><canvas id="chart"></canvas></div></div>
+      <div class="card lg:col-span-2"><h3 class="font-display font-extrabold text-xl">Agent chain</h3><div id="graph" class="mt-3"></div></div>
+    </div>
+    <div class="card mt-5 !bg-lavender"><div class="flex items-center gap-2"><span class="text-xl">✦</span>
+      <h3 class="font-display font-extrabold text-xl">Activity log</h3></div>
+      <div id="log" class="mt-3 font-mono text-[13px] leading-6 max-h-64 overflow-y-auto"></div></div>
+  </section>
+
+  <!-- AGENTS -->
+  <section data-panel="agents" class="tab-panel" hidden>
+    <div class="grid lg:grid-cols-5 gap-5 mt-10">
+      <form id="agent-form" class="card lg:col-span-3 flex flex-col gap-4">
+        <div><p class="eyebrow">Register an agent</p><h2 class="font-display font-extrabold text-3xl mt-1">Declare what it is for</h2></div>
+        <div><label class="lbl">Start from a role template</label><select class="inp" name="template" id="template"></select></div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div><label class="lbl">Agent name</label><input class="inp" name="name" required placeholder="Procurement Agent"></div>
+          <div><label class="lbl">Agent id</label><input class="inp" name="id" placeholder="procurement"></div></div>
+        <div><label class="lbl">Purpose</label><input class="inp" name="purpose" required placeholder="Compare supplier prices and create purchase requests"></div>
+        <div><label class="lbl">Tools it needs</label><div id="f-tools" class="flex flex-wrap gap-2"></div></div>
+        <div><label class="lbl">Data domains</label><div id="f-domains" class="flex flex-wrap gap-2"></div></div>
+        <div><label class="lbl">Allowed external destinations (comma separated)</label><input class="inp" name="egress" placeholder="acme-metals.example, nordic-fasteners.example"></div>
+        <div><label class="lbl">May delegate to (agent ids, comma separated)</label><input class="inp" name="can_delegate" placeholder="finance"></div>
+        <div id="agent-err" class="hidden text-danger font-semibold text-sm"></div>
+        <button class="btn-primary self-start">→ Register agent</button>
+      </form>
+      <div class="lg:col-span-2 flex flex-col gap-5">
+        <div id="token-box" class="card !bg-butter hidden"></div>
+        <div class="card"><h3 class="font-display font-extrabold text-xl">Registered agents</h3><div id="agent-list" class="mt-3 flex flex-col gap-2"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RUN -->
+  <section data-panel="run" class="tab-panel" hidden>
+    <form id="task-form" class="card mt-10 flex flex-col gap-4 max-w-3xl">
+      <div><p class="eyebrow">Give an agent work</p><h2 class="font-display font-extrabold text-3xl mt-1">Run a task with a live LLM agent</h2>
+        <p class="text-muted mt-1">The agent decides by itself which tools to call. Every call goes through the gateway.</p></div>
+      <div><label class="lbl">Agent</label><select class="inp" name="agent" id="task-agent"></select></div>
+      <div><label class="lbl">Task</label><textarea class="inp" name="task" required placeholder="Compare the supplier quotes in the document store and create a purchase request for 2000 steel bolts with the cheapest supplier."></textarea></div>
+      <label class="check self-start"><input type="checkbox" name="untrusted"> This request came from outside the company (email, partner portal, web)</label>
+      <div id="task-msg" class="text-sm font-semibold"></div>
+      <button class="btn-primary self-start">▶ Run task</button>
+    </form>
+  </section>
+
+  <!-- DOCUMENTS -->
+  <section data-panel="docs" class="tab-panel" hidden>
+    <div class="grid lg:grid-cols-5 gap-5 mt-10">
+      <form id="doc-form" class="card lg:col-span-3 flex flex-col gap-4">
+        <div><p class="eyebrow">Document store</p><h2 class="font-display font-extrabold text-3xl mt-1">Upload a document</h2>
+          <p class="text-muted mt-1">Agents read these while they work. Anything inside them, visible or hidden, reaches the LLM.</p></div>
+        <div><label class="lbl">File (.txt, .md, .csv, .json)</label><input class="inp" type="file" id="doc-file" accept=".txt,.md,.csv,.json,.html"></div>
+        <div class="grid sm:grid-cols-2 gap-4"><div><label class="lbl">Name</label><input class="inp" name="name" required placeholder="quote_brightline_q4.pdf"></div>
+          <div><label class="lbl">Folder</label><select class="inp" name="folder"><option>documents</option><option>finance</option><option>hr</option></select></div></div>
+        <div><label class="lbl">Content</label><textarea class="inp !min-h-[180px]" name="text" required placeholder="Paste or load the document text"></textarea></div>
+        <label class="check self-start"><input type="checkbox" name="canary"> Canary file (honeytoken): no real task needs it, so any agent touching it is flagged</label>
+        <div id="doc-msg" class="text-sm font-semibold"></div>
+        <button class="btn-primary self-start">⬆ Upload</button>
+      </form>
+      <div class="card lg:col-span-2"><h3 class="font-display font-extrabold text-xl">In the store</h3><div id="doc-list" class="mt-3 flex flex-col gap-2"></div></div>
+    </div>
+  </section>
+
+  <!-- GOVERNANCE -->
+  <section data-panel="gov" class="tab-panel" hidden>
+    <div class="grid md:grid-cols-2 gap-5 mt-10">
+      <form id="settings-form" class="card md:col-span-2 !bg-sky flex flex-wrap items-end gap-4">
+        <div class="w-full"><h3 class="font-display font-extrabold text-xl">Workspace protection settings</h3></div>
+        <label class="check"><input type="checkbox" name="sanitize"> Remove hidden AI instructions from documents before agents read them</label>
+        <div class="flex-1 min-w-[260px]"><label class="lbl">Alert webhook (Slack-compatible, risk ≥ 60)</label><input class="inp" name="webhook" placeholder="https://hooks.slack.com/services/…"></div>
+        <button class="btn-primary">Save</button><span id="settings-msg" class="text-sm font-semibold"></span>
+      </form>
+      <div class="card"><h3 class="font-display font-extrabold text-xl">Held for approval</h3><div id="approvals" class="mt-3 flex flex-col gap-2"></div></div>
+      <div class="card"><h3 class="font-display font-extrabold text-xl">Outbound traffic</h3><div id="external" class="mt-3 flex flex-col gap-2"></div></div>
+      <form id="change-form" class="card flex flex-col gap-3">
+        <h3 class="font-display font-extrabold text-xl">Request a role change</h3>
+        <p class="text-sm text-muted -mt-2">Declared, approved changes stop new behavior from being treated as drift.</p>
+        <select class="inp" name="agent" id="change-agent"></select>
+        <div><label class="lbl">Add tools</label><div id="c-tools" class="flex flex-wrap gap-2"></div></div>
+        <div><label class="lbl">Add domains</label><div id="c-domains" class="flex flex-wrap gap-2"></div></div>
+        <input class="inp" name="egress" placeholder="Add destinations (comma separated)">
+        <input class="inp" name="reason" required placeholder="Reason, e.g. Q4 policy: check budget before each purchase">
+        <button class="btn-primary self-start">→ Submit request</button>
+        <div id="changes" class="flex flex-col gap-2"></div>
+      </form>
+      <form id="plugin-form" class="card flex flex-col gap-3">
+        <h3 class="font-display font-extrabold text-xl">Tool registry <span class="text-sm font-sans font-medium text-muted">scanned by CodeGuard</span></h3>
+        <div class="grid grid-cols-2 gap-3"><input class="inp" name="name" required placeholder="Tool name"><input class="inp" name="vendor" placeholder="Vendor"></div>
+        <input class="inp" name="description" placeholder="What it does">
+        <textarea class="inp font-mono text-[13px]" name="source" required placeholder="Paste the tool's source code"></textarea>
+        <button class="btn-primary self-start">→ Submit for review</button>
+        <div id="plugins" class="flex flex-col gap-2"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- API -->
+  <section data-panel="api" class="tab-panel" hidden>
+    <div class="card mt-10 max-w-4xl">
+      <p class="eyebrow">Gateway API</p><h2 class="font-display font-extrabold text-3xl mt-1">Connect any agent</h2>
+      <p class="text-muted mt-1">Agents built with any framework call tools through this endpoint with their own token. Anyone else holding the token goes through the same checks.</p>
+      <div id="api-body" class="mt-5 flex flex-col gap-4"></div>
+    </div>
+  </section>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

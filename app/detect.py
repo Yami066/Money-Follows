@@ -16,7 +16,7 @@ class Baseline:
         self.tools, self.trans, self.from_, self.hosts = Counter(), Counter(), Counter(), Counter()
         self.n = 0
 
-    def learn(self, prev, tool, host):
+    def learn(self, prev, tool, host, args=None):
         self.n += 1
         self.tools[tool] += 1
         if host:
@@ -24,6 +24,50 @@ class Baseline:
         if prev:
             self.trans[(prev, tool)] += 1
             self.from_[prev] += 1
+        nums = self.__dict__.setdefault("nums", {})  # per (tool, argument): [count, max] of numeric values and text sizes
+        for k, v in numeric_args(tool, args).items():
+            c = nums.setdefault(f"{tool}.{k}", [0, 0.0])
+            c[0], c[1] = c[0] + 1, max(c[1], v)
+
+
+NUMERIC = {"create_purchase_request": ("quantity", "unit_price"), "send_email": ("body",), "http_post": ("body",)}
+
+
+def numeric_args(tool, args):
+    out = {}
+    for k in NUMERIC.get(tool, ()):
+        v = (args or {}).get(k)
+        try:
+            out[k] = float(len(v)) if k == "body" else float(v)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def arguments(agent, tool, args):
+    """Mimicry evasion: the right tool with the wrong magnitude (10x quantity, a huge email body)."""
+    nums, out = getattr(agent.baseline, "nums", {}), []
+    for k, v in numeric_args(tool, args).items():
+        count, top = nums.get(f"{tool}.{k}", [0, 0.0])
+        if count >= 3 and top > 0 and v > 3 * top:
+            what = "size of `body`" if k == "body" else f"`{k}`"
+            out.append(sig("Argument anomaly", 15, f"{what} = {v:g} is {v / top:.1f}x the largest seen ({top:g}) for this agent"))
+    return out
+
+
+def burst(agent, now):
+    recent = [t for t in getattr(agent, "recent", []) if now - t < 60] + [now]
+    agent.recent = recent
+    if len(recent) > 15:
+        return [sig("Behavior baseline", 10, f"Burst: {len(recent)} actions in the last 60 seconds")]
+    return []
+
+
+def canary(company, ev):
+    name = ev["args"].get("name")
+    if ev["tool"] == "read_document" and name in getattr(company, "canaries", set()):
+        return [sig("Canary", 45, f"Touched honeytoken file {name}: no legitimate task ever reads it")]
+    return []
 
 
 def host_allowed(host, egress):
@@ -50,15 +94,16 @@ def conformance(agent, ev):
 def baseline(agent, ev, cohort):
     cold = agent.baseline.n < COLD_START_MIN
     b = cohort if cold else agent.baseline
-    src = f"{agent.manifest['cohort']} cohort baseline (cold start, {agent.baseline.n} own actions)" if cold \
+    # cold start: until the agent has its own history, its manifest and its role cohort say what is expected
+    src = f"role manifest + cohort (still learning: {agent.baseline.n} own actions)" if cold \
         else f"own baseline ({b.n} actions)"
     out, tool, prev = [], ev["tool"], agent.last_tool
-    if b.tools[tool] == 0 and tool not in agent.declared_tools:
+    if b.tools[tool] == 0 and tool not in agent.declared_tools and not (cold and tool in agent.manifest["tools"]):
         out.append(sig("Behavior baseline", 10, f"First use of `{tool}`, never seen in {src}"))
-    if prev and b.from_[prev] >= 10 and b.tools[tool] > 0 and b.trans[(prev, tool)] / b.from_[prev] < 0.05:
+    if not cold and prev and b.from_[prev] >= 10 and b.tools[tool] > 0 and b.trans[(prev, tool)] / b.from_[prev] < 0.05:
         out.append(sig("Behavior baseline", 8, f"Unusual sequence `{prev}` → `{tool}` for this role"))
     host = ev.get("host")
-    if host and not is_internal(host) and b.hosts[host] == 0:
+    if host and not is_internal(host) and b.hosts[host] == 0 and not (cold and host_allowed(host, agent.manifest["egress"])):
         out.append(sig("Behavior baseline", 10, f"Never-before-seen destination {host}"))
     return out
 

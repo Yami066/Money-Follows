@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DriftGuard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script src="/static/tw.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="md:min-h-screen grid md:grid-cols-2">
+  <div class="bg-lavender border-b-[3px] md:border-b-0 md:border-r-[3px] border-ink p-8 md:p-10 flex flex-col justify-between gap-8">
+    <div class="flex items-center gap-2">
+      <div class="w-10 h-10 rounded-full bg-butter border-[3px] border-ink grid place-items-center font-display font-extrabold">D</div>
+      <span class="font-display font-extrabold text-2xl">DriftGuard</span>
+    </div>
+    <div>
+      <p class="eyebrow !text-ink/70">Identity drift detection</p>
+      <h1 class="font-display font-extrabold text-5xl leading-[1.05] tracking-tight mt-3">Valid token.<br><span class="swipe">Wrong behavior.</span></h1>
+      <p class="text-lg mt-5 max-w-md">Register your AI agents, declare what each one is for, and DriftGuard checks every action
+        they take against that role, even when their credentials are perfectly valid.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <span class="chip">Role manifests</span><span class="chip">Learned baselines</span><span class="chip">Injection provenance</span>
+      <span class="chip">Explainable risk</span><span class="chip">Scope-down, not shutdown</span>
+    </div>
+  </div>
+  <div class="p-8 md:p-16 flex items-center">
+    <div class="w-full max-w-md mx-auto">
+      <div class="seg w-fit mb-8"><a href="/login" id="tab-login" class="seg-btn">Log in</a><a href="/signup" id="tab-signup" class="seg-btn">Sign up</a></div>
+      <h2 id="title" class="font-display font-extrabold text-4xl"></h2>
+      <p id="sub" class="text-muted mt-2"></p>
+      <form id="form" class="mt-8 flex flex-col gap-4">
+        <div data-signup><label class="lbl">Full name</label><input class="inp" name="name" autocomplete="name" placeholder="e.g. Maaz Q"></div>
+        <div data-signup><label class="lbl">Organization</label><input class="inp" name="org" autocomplete="organization" placeholder="e.g. Acme Corp security team"></div>
+        <div><label class="lbl">Work email</label><input class="inp" name="email" type="email" autocomplete="email" required placeholder="you@company.com"></div>
+        <div><label class="lbl">Password</label><input class="inp" name="password" type="password" required minlength="8" placeholder="At least 8 characters"></div>
+        <div id="err" class="hidden rounded-input bg-[#FDECEC] border-2 border-danger px-4 py-3 text-sm font-semibold text-danger"></div>
+        <button class="btn-primary mt-2" id="submit"></button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+const signup = location.pathname === "/signup";
+document.getElementById(signup ? "tab-signup" : "tab-login").classList.add("on");
+document.querySelectorAll("[data-signup]").forEach((el) => { el.hidden = !signup; el.querySelector("input").required = signup; });
+document.getElementById("title").textContent = signup ? "Create your workspace" : "Welcome back";
+document.getElementById("sub").textContent = signup ? "Your workspace starts empty: you register the agents." : "Log in to your DriftGuard workspace.";
+document.getElementById("submit").textContent = signup ? "→ Create account" : "→ Log in";
+document.getElementById("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  const r = await fetch(signup ? "/api/auth/signup" : "/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.ok) { location.href = "/app"; return; }
+  const err = document.getElementById("err");
+  err.textContent = (await r.json().catch(() => ({}))).detail || "Something went wrong";
+  err.classList.remove("hidden");
+});
+</script>
+</body>
+</html>

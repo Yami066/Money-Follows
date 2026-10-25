@@ -23,6 +23,14 @@ def label():
     return f"{config.PROVIDER}:{_settings()[2]}"
 
 
+def complete(messages):
+    """Plain text completion, no tools."""
+    url, key, model = _settings()
+    r = httpx.post(url, headers={"Authorization": f"Bearer {key}"}, json={"model": model, "messages": messages, "temperature": 0.2}, timeout=60)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"].get("content") or ""
+
+
 def chat(messages, tools):
     url, key, model = _settings()
     body = {"model": model, "messages": messages, "tools": tools, "tool_choice": "auto", "temperature": 0.2}
