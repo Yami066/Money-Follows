@@ -89,7 +89,7 @@ function renderAgents() {
     const [label, cls] = STATUS[a.status];
     const busy = S.running.includes(a.id);
     return `<div class="card relative flex flex-col gap-3 ${a.status === "quarantined" ? "!border-danger" : ""}">
-      ${a.cold_start ? `<div class="sticker !bg-sky text-xs" style="right:auto;left:46%;top:-22px">Learning</div>` : ""}
+      ${a.cold_start ? `<div class="sticker !bg-sky text-xs" style="right:auto;left:-14px;top:-22px;transform:rotate(-8deg)">Learning</div>` : ""}
       <div class="flex items-start justify-between gap-2"><div><h3 class="font-display font-extrabold text-xl leading-tight">${esc(a.name)}</h3>
         <span class="mono">${esc(a.id)}</span> <span class="mono">role v${a.version}</span></div>
         <span class="badge ${busy ? "bg-sky border-2 border-ink" : cls}">${busy ? "Working…" : label}</span></div>
