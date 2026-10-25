@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DriftGuard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { cream:"#F5F1E8", ink:"#17151F", lavender:"#C3B1F5", "lavender-deep":"#6E56D9", butter:"#F9D56E", mint:"#B9E4A1",
+            sky:"#A8CCF4", coral:"#F2A58B", "cream-yellow":"#FDF1D0", danger:"#D64545", muted:"#5A5870" },
+  borderRadius: { card:"28px", input:"20px" },
+  boxShadow: { brutal:"6px 6px 0 0 #17151F", "brutal-sm":"0 4px 0 0 #17151F", "brutal-purple":"0 4px 0 0 #6E56D9",
+               clay:"0 6px 14px rgba(23,21,31,0.10), inset 0 2px 0 rgba(255,255,255,0.8)" },
+  fontFamily: { display:["Bricolage Grotesque","sans-serif"], sans:["Outfit","sans-serif"], mono:["JetBrains Mono","monospace"] } } } };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="max-w-[1200px] mx-auto px-6 pb-16">
+
+  <!-- nav -->
+  <nav class="mt-6 bg-white rounded-full shadow-clay px-4 py-3 flex flex-wrap items-center gap-3 sticky top-4 z-20">
+    <div class="flex items-center gap-2 pr-2">
+      <div class="w-9 h-9 rounded-full bg-butter border-[3px] border-ink grid place-items-center font-display font-extrabold">D</div>
+      <span class="font-display font-extrabold text-xl tracking-tight">DriftGuard</span>
+    </div>
+    <a href="#scenarios" class="nav-item">Scenarios</a><a href="#agents" class="nav-item">Agents</a>
+    <a href="#alerts" class="nav-item">Alerts</a><a href="#governance" class="nav-item">Governance</a>
+    <div class="ml-auto flex items-center gap-3">
+      <span id="llm" class="badge"></span>
+      <div class="seg" id="mode">
+        <button data-mode="live" class="seg-btn">Live LLM</button><button data-mode="replay" class="seg-btn">Replay</button>
+      </div>
+      <button id="reset" class="btn-secondary !py-2">Reset</button>
+    </div>
+  </nav>
+
+  <!-- hero -->
+  <section class="grid md:grid-cols-2 gap-8 mt-12 items-center">
+    <div>
+      <p class="eyebrow">Identity drift detection for AI agents</p>
+      <h1 class="font-display font-extrabold text-5xl md:text-6xl leading-[1.02] tracking-tight mt-3">
+        Valid token.<br><span class="swipe">Wrong behavior.</span></h1>
+      <p class="text-muted text-lg mt-5 max-w-md">Every tool call is checked against the agent's declared role, its learned
+        baseline and what it just read, even when IAM says yes.</p>
+    </div>
+    <div class="grid grid-cols-2 gap-4" id="kpis"></div>
+  </section>
+
+  <div id="banner" class="mt-10 bg-cream-yellow rounded-card px-6 py-4 flex flex-wrap items-center gap-3"></div>
+
+  <section id="scenarios" class="mt-12">
+    <p class="eyebrow">Step 1</p><h2 class="font-display font-extrabold text-3xl mt-1">Run a scenario</h2>
+    <div id="scenario-grid" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-6"></div>
+  </section>
+
+  <section id="agents" class="mt-14">
+    <p class="eyebrow">Step 2</p><h2 class="font-display font-extrabold text-3xl mt-1">Agents and their roles</h2>
+    <div id="agent-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-6"></div>
+  </section>
+
+  <section id="alerts" class="mt-14">
+    <p class="eyebrow">Step 3</p><h2 class="font-display font-extrabold text-3xl mt-1">Live activity and the why</h2>
+    <div class="grid lg:grid-cols-5 gap-5 mt-6">
+      <div class="card lg:col-span-2 !p-4">
+        <div class="flex items-center justify-between px-2 pb-3"><h3 class="font-display font-extrabold text-xl">Gateway feed</h3>
+          <span class="text-xs text-muted">click a row</span></div>
+        <div id="feed" class="flex flex-col gap-2 max-h-[560px] overflow-y-auto pr-1"></div>
+      </div>
+      <div class="card lg:col-span-3 relative" id="detail"></div>
+    </div>
+    <div class="grid lg:grid-cols-5 gap-5 mt-5">
+      <div class="card lg:col-span-3"><h3 class="font-display font-extrabold text-xl">Risk over time</h3>
+        <div class="h-64 mt-3"><canvas id="chart"></canvas></div></div>
+      <div class="card lg:col-span-2"><h3 class="font-display font-extrabold text-xl">Agent chain</h3>
+        <div id="graph" class="mt-3"></div></div>
+    </div>
+    <div class="card mt-5 !bg-lavender"><div class="flex items-center gap-2"><span class="text-xl">✦</span>
+      <h3 class="font-display font-extrabold text-xl">Agent narration</h3><span class="text-sm text-ink/70">what the LLM agents said</span></div>
+      <div id="log" class="mt-3 font-mono text-[13px] leading-6 max-h-56 overflow-y-auto"></div></div>
+  </section>
+
+  <section id="governance" class="mt-14">
+    <p class="eyebrow">Step 4</p><h2 class="font-display font-extrabold text-3xl mt-1">Humans stay in control</h2>
+    <div class="grid md:grid-cols-2 gap-5 mt-6">
+      <div class="card"><h3 class="font-display font-extrabold text-xl">Held for approval</h3><div id="approvals" class="mt-3 flex flex-col gap-2"></div></div>
+      <div class="card"><h3 class="font-display font-extrabold text-xl">Declared role changes</h3><div id="changes" class="mt-3 flex flex-col gap-2"></div></div>
+      <div class="card"><h3 class="font-display font-extrabold text-xl">Tool registry <span class="text-sm font-sans font-medium text-muted">scanned by CodeGuard</span></h3>
+        <div id="plugins" class="mt-3 flex flex-col gap-2"></div></div>
+      <div class="card"><h3 class="font-display font-extrabold text-xl">External server received</h3>
+        <div id="external" class="mt-3 flex flex-col gap-2"></div></div>
+    </div>
+  </section>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

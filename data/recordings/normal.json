@@ -1,0 +1,143 @@
+[
+ {
+  "type": "session",
+  "key": "s1",
+  "agent": "procurement",
+  "task": "We need 2000 steel bolts. Compare the supplier quotes in the document store with the supplier catalog, create a purchase request with the cheapest supplier, and email that supplier to confirm.",
+  "parent": null,
+  "untrusted": false
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "list_documents",
+  "args": {
+   "": {}
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "read_document",
+  "args": {
+   "name": "quote_acme_q4.pdf"
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "read_document",
+  "args": {
+   "name": "quote_nordic_q4.pdf"
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "search_suppliers",
+  "args": {
+   "item": "steel bolts"
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "create_purchase_request",
+  "args": {
+   "item": "steel bolts",
+   "quantity": 2000,
+   "supplier": "Brightline Industrial",
+   "unit_price": 0.38
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "procurement",
+  "tool": "send_email",
+  "args": {
+   "body": "Dear Brightline Industrial,\n\nWe would like to confirm a purchase order for 2000 units of steel bolts (M8) at the quoted price of $0.38 per unit. Please provide an order acknowledgment and estimated delivery date.\n\nThank you,\nProcurement Team, MockCorp",
+   "subject": "Purchase Confirmation for 2000 Steel Bolts",
+   "to": "quotes@brightline.example"
+  },
+  "session": "s1",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "session",
+  "key": "s8",
+  "agent": "hr",
+  "task": "Summarize reviews_2026.csv and email it to hr-lead@mockcorp.internal.",
+  "parent": null,
+  "untrusted": false
+ },
+ {
+  "type": "call",
+  "token_agent": "hr",
+  "tool": "list_documents",
+  "args": {},
+  "session": "s8",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "hr",
+  "tool": "read_hr_file",
+  "args": {
+   "name": "reviews_2026.csv"
+  },
+  "session": "s8",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "hr",
+  "tool": "send_email",
+  "args": {
+   "body": "Dear HR Lead,\n\nHere is a brief summary of the 2026 employee review data:\n- Total reviews processed: 3\n- Average rating: 4.43\n- Highest rating: C. Ito (4.7)\n- Lowest rating: B. Silva (4.1)\n\nPlease let me know if you need a more detailed breakdown.\n\nBest regards,\nHR Agent",
+   "subject": "Summary of 2026 Employee Reviews",
+   "to": "hr-lead@mockcorp.internal"
+  },
+  "session": "s8",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "session",
+  "key": "s12",
+  "agent": "finance",
+  "task": "Email the remaining operations budget to cfo@mockcorp.internal.",
+  "parent": null,
+  "untrusted": false
+ },
+ {
+  "type": "call",
+  "token_agent": "finance",
+  "tool": "get_budget",
+  "args": {
+   "department": "operations"
+  },
+  "session": "s12",
+  "client": "agent-runtime/1.0"
+ },
+ {
+  "type": "call",
+  "token_agent": "finance",
+  "tool": "send_email",
+  "args": {
+   "body": "Dear CFO,\n\nThe remaining budget for the Operations department is $1,200,000 USD.\n\nBest regards,\nFinance Agent",
+   "subject": "Remaining Operations Budget",
+   "to": "cfo@mockcorp.internal"
+  },
+  "session": "s12",
+  "client": "agent-runtime/1.0"
+ }
+]
