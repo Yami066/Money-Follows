@@ -1,6 +1,7 @@
 """Agent gateway: every tool call passes through here. IAM check, enrichment, detection, risk, enforcement.
 One State per workspace (user account); it is persisted to SQLite after every change."""
 import copy
+import json
 import os
 import secrets
 import sys
@@ -9,7 +10,7 @@ import time
 
 import httpx
 
-from . import detect as D
+from . import detect as D, llm
 from .config import ROOT
 from .manifests import ALL_TOOLS
 from .mockcorp import TOOL_META, Company, host_of, is_internal
@@ -19,6 +20,12 @@ from codeguard import engine as cg_engine, injection, textclf  # noqa: E402
 
 LOCK = threading.RLock()
 RUNTIME_CLIENT = "driftguard-runtime/1.0"
+INTENT_TOOLS = {"read_document", "read_hr_file", "get_budget", "create_purchase_request", "send_email", "http_post", "delegate"}
+
+
+def argsum(e):
+    a = e.get("args") or {}
+    return a.get("name") or a.get("url") or a.get("to") or a.get("agent") or a.get("supplier") or ""
 
 
 def inj_score(text):
@@ -119,7 +126,28 @@ class State:
             return sid
 
     # ---------- the gateway call ----------
+    def _intent(self, token, tool, args, session_id):
+        """Intent drift: an in-role action can still have nothing to do with the task the agent was given (mimicry).
+        Runs outside the lock: it is a network call to a small, fast LLM judge, cached per session and action."""
+        if tool not in INTENT_TOOLS or not self.settings.get("intent", True) or not llm.available():
+            return []
+        sess, agent = self.sessions.get(session_id), self.agent_by_token(token)
+        if not sess or not agent or not sess.task:
+            return []
+        key = f"{tool}:{json.dumps(args, sort_keys=True)[:300]}"
+        cache = sess.__dict__.setdefault("intent", {})
+        if key not in cache:
+            history = [f"{e['tool']}({argsum(e)})" for e in self.events if e.get("session") == session_id][-12:]
+            cache[key] = llm.judge_intent(agent.manifest["name"], agent.manifest["purpose"], sess.task, tool, args, history)
+        v = cache[key]
+        if v is None or v[0]:
+            return []
+        high = len(v) > 2 and v[2]
+        return [D.sig("Intent drift", 45 if high else 20,
+                      f"Does not serve the task \"{sess.task[:70]}…\"{' (moves or touches confidential data)' if high else ''}: {v[1]}")]
+
     def call(self, token, tool, args, session_id=None, client=RUNTIME_CLIENT):
+        intent = self._intent(token, tool, args, session_id)
         with LOCK:
             agent = self.agent_by_token(token)
             if agent is None:
@@ -149,7 +177,7 @@ class State:
 
             # ---- detection ----
             s = D.conformance(agent, ev) + D.baseline(agent, ev, self.cohort(agent.manifest.get("cohort", agent.id)))
-            s += D.arguments(agent, tool, args) + D.burst(agent, ev["ts"])
+            s += D.arguments(agent, tool, args) + D.burst(agent, ev["ts"]) + intent
             deviation = sum(x["points"] for x in s)
             s += D.canary(self.company, ev)
             s += D.provenance(sess, deviation)
@@ -229,7 +257,9 @@ class State:
 
     @property
     def settings(self):
-        return self.__dict__.setdefault("_settings", {"sanitize": True, "webhook": ""})
+        st = self.__dict__.setdefault("_settings", {"sanitize": True, "webhook": ""})
+        st.setdefault("intent", True)
+        return st
 
     def _sanitize(self, text):
         """Remove only the lines carrying AI-targeted instructions, so the agent still gets the real content."""
@@ -340,6 +370,68 @@ class State:
             a.cusum = 0
             ch["status"], ch["version"] = "approved", a.manifest["version"]
             return ch
+
+    # ---------- incident response ----------
+    def blast_radius(self, aid):
+        """Everything a compromise touched: from the first suspicious session of this agent, plus what it delegated."""
+        with LOCK:
+            tainted = lambda sid: bool(sid and self.sessions.get(sid) and self.sessions[sid].taint)  # noqa: E731
+            mine = [e for e in self.events if e["agent"] == aid]
+            bad_sessions = {e["session"] for e in mine if e["score"] >= 40 or tainted(e["session"])}
+            first = next((e for e in mine if e["session"] in bad_sessions or e["score"] >= 40), None)
+            if not first:
+                return {"agent": aid, "incident": False}
+            window = [e for e in mine if e["session"] in bad_sessions or e["id"] >= first["id"]]
+            child_sessions = {sid for sid, s in self.sessions.items() if s.parent_agent == aid and
+                              (s.taint or any(e["session"] == sid and e["score"] >= 40 for e in self.events))}
+            children = [e for e in self.events if e["session"] in child_sessions]
+            allw = [e for e in window + children if e["decision"] == "allowed"]
+            prs = []
+            for e in allw:
+                if e["tool"] == "create_purchase_request" and "PR-" in str(e.get("result")):
+                    pid = "PR-" + str(e["result"]).split("PR-")[1].split()[0].rstrip(".")
+                    pr = next((p for p in self.company.purchase_requests if p["id"] == pid), {})
+                    prs.append({"id": pid, "supplier": pr.get("supplier"), "quantity": pr.get("quantity"),
+                                "status": pr.get("status", "open"), "event": e["id"]})
+            sources = [{"event": e["id"], "label": e["args"].get("name") or "incoming task", "score": e.get("injection_score")}
+                       for e in window + children if (e.get("injection_score") or 0) >= 0.5]
+            for sid in bad_sessions | child_sessions:
+                t = self.sessions[sid].taint if sid in self.sessions else None
+                if t and t.get("source") and not any(s["label"] == t["source"] for s in sources):
+                    sources.append({"event": None, "label": t["source"], "score": round(t["score"], 2)})
+            return {
+                "agent": aid, "incident": True, "since": first["ts"], "remediated": getattr(self.agents[aid], "remediated", False),
+                "sources": sources,
+                "data_accessed": [{"event": e["id"], "label": f"{e['tool']} {e['args'].get('name', '')}".strip(), "domain": e["domain"]}
+                                  for e in allw if e["domain"] in ("hr", "finance") or e["sensitivity"] in ("high", "medium")],
+                "outbound": [{"event": e["id"], "label": e.get("host"), "tool": e["tool"]} for e in allw
+                             if e.get("host") and not is_internal(e["host"])],
+                "completed": prs,
+                "blocked": [{"event": e["id"], "label": f"{e['tool']} {argsum(e)}", "decision": e["decision"], "score": e["score"]}
+                            for e in window + children if e["decision"] != "allowed"],
+                "downstream": sorted({e["agent"] for e in children}),
+            }
+
+    def remediate(self, aid, by=""):
+        """Contain: quarantine, rotate the token, cancel actions completed inside the compromised sessions."""
+        with LOCK:
+            br = self.blast_radius(aid)
+            if not br.get("incident"):
+                return br
+            a = self.agents[aid]
+            a.status, a.token, a.client, a.remediated = "quarantined", new_token(), None, True
+            cancelled = []
+            for pr in br["completed"]:
+                p = next((x for x in self.company.purchase_requests if x["id"] == pr["id"]), None)
+                if p and p.get("status", "open") == "open":
+                    p["status"] = "cancelled (incident)"
+                    cancelled.append(p["id"])
+            for child in br["downstream"]:
+                if child in self.agents and self.agents[child].status != "quarantined":
+                    self.agents[child].status = "restricted"
+                    self.agents[child].note = f"Under review: received tasks from compromised {aid}"
+            self.log.append(f"🛡 {by or 'owner'} contained {aid}: token rotated, quarantined, cancelled {', '.join(cancelled) or 'no actions'}")
+            return {**self.blast_radius(aid), "cancelled": cancelled}
 
     def release(self, agent_id):
         with LOCK:

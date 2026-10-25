@@ -2,7 +2,7 @@ const PASTEL = { mint: "#B9E4A1", coral: "#F2A58B", butter: "#F9D56E", lavender:
 const STATUS = { healthy: ["Healthy", "bg-mint"], watching: ["Watching", "bg-butter"], restricted: ["Restricted", "bg-coral"], quarantined: ["Quarantined", "bg-danger text-white"] };
 const DECISION = { allowed: "bg-mint", held: "bg-butter", blocked: "bg-coral", quarantined: "bg-danger text-white" };
 const LINE = ["#6E56D9", "#D64545", "#3B82C4", "#2F8F4E", "#C27A12", "#17151F"];
-let S = null, selected = null, chart = null, formsBuilt = false;
+let S = null, selected = null, chart = null, formsBuilt = false, blastAgent = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -42,6 +42,39 @@ function render() {
   $("empty").classList.toggle("hidden", S.agents.length > 0);
   renderKpis(); renderAgents(); renderFeed(); renderDetail(); renderChart(); renderGraph(); renderLog();
   renderAgentList(); renderSelects(); renderDocs(); renderGovernance(); renderApi();
+  if (blastAgent) loadBlast();
+}
+
+function openBlast(id) { blastAgent = id; loadBlast(); setTimeout(() => $("blast").scrollIntoView({ behavior: "smooth", block: "start" }), 150); }
+
+async function loadBlast() {
+  const b = await (await fetch(`/api/agents/${blastAgent}/blast`)).json();
+  const box = $("blast"); box.classList.remove("hidden");
+  const items = (arr, f) => arr.length ? arr.map(f).join("") : `<span class="text-sm text-muted">none</span>`;
+  const chip = (t, cls = "") => `<span class="chip !text-xs ${cls}">${t}</span>`;
+  if (!b.incident) { box.innerHTML = `<div class="flex justify-between"><h3 class="font-display font-extrabold text-2xl">Blast radius · ${esc(blastAgent)}</h3>
+    <button class="btn-secondary !py-1 !px-3 text-xs" onclick="blastAgent=null;$('blast').classList.add('hidden')">Close</button></div><p class="mt-2">No incident on record for this agent.</p>`; return; }
+  box.innerHTML = `<div class="flex flex-wrap items-start justify-between gap-3">
+      <div><p class="eyebrow !text-danger">Incident since ${new Date(b.since * 1000).toLocaleTimeString()}</p>
+        <h3 class="font-display font-extrabold text-3xl mt-1">Blast radius · ${esc(blastAgent)}</h3>
+        <p class="text-sm mt-1">Everything this compromise touched, so you can contain it precisely.</p></div>
+      <div class="flex gap-2">${b.remediated ? `<span class="badge bg-mint border-2 border-ink">✓ Contained</span>`
+        : `<button class="btn-primary" onclick="remediate('${esc(blastAgent)}')">🛡 Contain &amp; roll back</button>`}
+        <button class="btn-secondary !py-2 !px-4 text-sm" onclick="blastAgent=null;$('blast').classList.add('hidden')">Close</button></div></div>
+    <div class="grid md:grid-cols-3 gap-4 mt-5">
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">1 · Entry point</div><div class="flex flex-wrap gap-1 mt-2">${items(b.sources, (s) => chip(`☣ ${esc(s.label)}${s.score ? " · " + s.score : ""}`, "!bg-coral"))}</div></div>
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">2 · Data it reached</div><div class="flex flex-wrap gap-1 mt-2">${items(b.data_accessed, (d) => chip(`${esc(d.label)} · ${esc(d.domain)}`, "!bg-butter"))}</div></div>
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">3 · Data that left</div><div class="flex flex-wrap gap-1 mt-2">${items(b.outbound, (o) => chip(`↗ ${esc(o.label)}`, "!bg-coral"))}</div></div>
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">4 · Actions it completed</div><div class="flex flex-col gap-1 mt-2">${items(b.completed, (p) =>
+        `<div class="text-sm"><b class="${p.status !== "open" ? "line-through" : ""}">${esc(p.id)}</b> ${esc(p.supplier || "")} × ${esc(p.quantity || "")} <span class="badge ${p.status === "open" ? "bg-butter" : "bg-mint"}">${esc(p.status)}</span></div>`)}</div></div>
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">5 · Attempts stopped</div><div class="flex flex-wrap gap-1 mt-2">${items(b.blocked, (x) => chip(`✕ ${esc(x.label)} · ${x.score}`, "!bg-[#FDECEC]"))}</div></div>
+      <div class="bg-white rounded-input p-4 border-2 border-ink"><div class="eyebrow">6 · Downstream agents</div><div class="flex flex-wrap gap-1 mt-2">${items(b.downstream, (d) => chip(esc(d), "!bg-lavender"))}</div></div>
+    </div>`;
+}
+
+async function remediate(id) {
+  if (!confirm(`Contain ${id}? This quarantines it, rotates its token and cancels actions completed inside the compromised sessions.`)) return;
+  await api(`/api/agents/${id}/remediate`);
 }
 
 function renderKpis() {
@@ -56,7 +89,7 @@ function renderAgents() {
     const [label, cls] = STATUS[a.status];
     const busy = S.running.includes(a.id);
     return `<div class="card relative flex flex-col gap-3 ${a.status === "quarantined" ? "!border-danger" : ""}">
-      ${a.cold_start ? `<div class="sticker !bg-sky text-xs">Learning</div>` : ""}
+      ${a.cold_start ? `<div class="sticker !bg-sky text-xs" style="right:auto;left:46%;top:-22px">Learning</div>` : ""}
       <div class="flex items-start justify-between gap-2"><div><h3 class="font-display font-extrabold text-xl leading-tight">${esc(a.name)}</h3>
         <span class="mono">${esc(a.id)}</span> <span class="mono">role v${a.version}</span></div>
         <span class="badge ${busy ? "bg-sky border-2 border-ink" : cls}">${busy ? "Working…" : label}</span></div>
@@ -66,7 +99,8 @@ function renderAgents() {
       <div class="text-xs text-muted">Baseline: ${a.cold_start ? "manifest + cohort while learning (" + a.baseline_n + "/20 own actions)" : a.baseline_n + " own actions"} · drift ${a.cusum}/35</div>
       ${a.revoked.length ? `<div class="flex flex-wrap gap-1">${a.revoked.map((r) => `<span class="badge bg-[#FDECEC] text-danger border-2 border-danger">✕ ${esc(r)}</span>`).join("")}</div>` : ""}
       ${a.note ? `<div class="text-sm font-semibold text-danger">${esc(a.note)}</div>` : ""}
-      ${a.status === "restricted" || a.status === "quarantined" ? `<button class="btn-secondary !py-1.5 text-sm self-start" onclick="api('/api/agents/${a.id}/release')">Release after review</button>` : ""}
+      <div class="flex flex-wrap gap-2">${a.risk >= 40 || a.status !== "healthy" ? `<button class="btn-primary !py-1.5 text-sm" onclick="openBlast('${a.id}')">◎ Blast radius</button>` : ""}
+      ${a.status === "restricted" || a.status === "quarantined" ? `<button class="btn-secondary !py-1.5 text-sm" onclick="api('/api/agents/${a.id}/release')">Release after review</button>` : ""}</div>
     </div>`;
   }).join("");
 }
@@ -259,10 +293,10 @@ function buildForms() {
     catch (err) { alert(err.message); }
   });
   const sf = $("settings-form");
-  sf.sanitize.checked = !!S.settings.sanitize; sf.webhook.value = S.settings.webhook || "";
+  sf.sanitize.checked = !!S.settings.sanitize; sf.intent.checked = S.settings.intent !== false; sf.webhook.value = S.settings.webhook || "";
   sf.addEventListener("submit", async (e) => {
     e.preventDefault();
-    try { await api("/api/settings", { sanitize: sf.sanitize.checked, webhook: sf.webhook.value }); $("settings-msg").textContent = "Saved."; }
+    try { await api("/api/settings", { sanitize: sf.sanitize.checked, intent: sf.intent.checked, webhook: sf.webhook.value }); $("settings-msg").textContent = "Saved."; }
     catch (err) { $("settings-msg").textContent = err.message; }
   });
   $("plugin-form").addEventListener("submit", async (e) => {

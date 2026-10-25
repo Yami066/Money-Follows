@@ -8,7 +8,7 @@
 <script src="https://cdn.tailwindcss.com/3.4.5"></script>
 <script src="/static/tw.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
 <div class="max-w-[1200px] mx-auto px-6 pb-16">
@@ -42,6 +42,7 @@
       <p class="mt-1">Register your first agent, give it a task, and watch the gateway score each action.</p>
       <button class="btn-primary mt-4" onclick="tab('agents')">→ Register an agent</button></div>
     <div id="agent-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-10"></div>
+    <div id="blast" class="hidden card mt-8 !bg-[#FDECEC] !border-danger"></div>
     <div class="grid lg:grid-cols-5 gap-5 mt-8">
       <div class="card lg:col-span-2 !p-4"><div class="flex items-center justify-between px-2 pb-3">
         <h3 class="font-display font-extrabold text-xl">Gateway feed</h3><span class="text-xs text-muted">click a row</span></div>
@@ -118,6 +119,7 @@
       <form id="settings-form" class="card md:col-span-2 !bg-sky flex flex-wrap items-end gap-4">
         <div class="w-full"><h3 class="font-display font-extrabold text-xl">Workspace protection settings</h3></div>
         <label class="check"><input type="checkbox" name="sanitize"> Remove hidden AI instructions from documents before agents read them</label>
+        <label class="check"><input type="checkbox" name="intent"> Intent check: an LLM judge verifies sensitive actions serve the session's task</label>
         <div class="flex-1 min-w-[260px]"><label class="lbl">Alert webhook (Slack-compatible, risk ≥ 60)</label><input class="inp" name="webhook" placeholder="https://hooks.slack.com/services/…"></div>
         <button class="btn-primary">Save</button><span id="settings-msg" class="text-sm font-semibold"></span>
       </form>
@@ -154,6 +156,6 @@
     </div>
   </section>
 </div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

@@ -156,6 +156,6 @@ def token_context(agent, sess, client):
     out = []
     if sess is None:
         out.append(sig("Token misuse", 30, "Token used outside the agent runtime: no task, no session"))
-    if client != agent.client:
+    if client != agent.client and client != "driftguard-runtime/1.0":  # the in-process runtime cannot be reached from outside
         out.append(sig("Token misuse", 15, f"Unrecognized client fingerprint {client}"))
     return out

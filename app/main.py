@@ -163,6 +163,24 @@ def release(aid: str, request: Request):
     return r
 
 
+@app.get("/api/agents/{aid}/blast")
+def blast(aid: str, request: Request):
+    uid = uid_of(request)
+    if aid not in ws(uid).agents:
+        raise HTTPException(404)
+    return ws(uid).blast_radius(aid)
+
+
+@app.post("/api/agents/{aid}/remediate")
+def remediate(aid: str, request: Request):
+    uid = uid_of(request)
+    if aid not in ws(uid).agents:
+        raise HTTPException(404)
+    r = ws(uid).remediate(aid, db.user(uid)["email"])
+    save(uid)
+    return r
+
+
 @app.post("/api/tasks")
 async def run_task(request: Request):
     uid = uid_of(request)
@@ -233,7 +251,7 @@ async def settings(request: Request):
     if url and not url.startswith(("http://", "https://")):
         raise HTTPException(400, "Webhook must be an http(s) URL")
     with LOCK:
-        ws(uid).settings.update(sanitize=bool(b.get("sanitize")), webhook=url)
+        ws(uid).settings.update(sanitize=bool(b.get("sanitize")), intent=bool(b.get("intent", True)), webhook=url)
     save(uid)
     return ws(uid).settings
 
