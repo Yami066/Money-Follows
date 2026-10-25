@@ -14,7 +14,7 @@
 4. [System Architecture & The Gateway Pipeline](#-system-architecture)
 5. [The 6-Signal Detection Engine (Mathematical & Algorithmic Details)](#-the-6-signal-detection-engine)
 6. [Proportional 4-Tier Enforcement Model](#-proportional-4-tier-enforcement-model)
-7. [Enterprise Governance & CodeGuard Tool Registry](#-enterprise-governance)
+7. [Enterprise Governance & Static AST Tool Scanner](#-enterprise-governance)
 8. [Judging Walkthrough & Live Verification Scenarios](#-judging-walkthrough--live-verification-scenarios)
 9. [Repository & Codebase Structure](#-repository--codebase-structure)
 10. [Local Setup & Deployment Guide](#-local-setup--deployment-guide)
@@ -69,12 +69,12 @@ DriftGuard enforces a strict runtime boundary between the agent's LLM reasoning 
 
 | Threat Class | Attack Scenario | Traditional Gateway | DriftGuard Defense |
 | :--- | :--- | :---: | :--- |
-| **Indirect Prompt Injection** | Attacker embeds hidden instructions in a vendor quote PDF instructing the agent to read salary data. | ❌ Allowed (Token valid) | 🛡️ **Blocked / Quarantined**: CodeGuard classifier identifies injection semantics in provenance; exfiltration detector flags domain jump. |
+| **Indirect Prompt Injection** | Attacker embeds hidden instructions in a vendor quote PDF instructing the agent to read salary data. | ❌ Allowed (Token valid) | 🛡️ **Blocked / Quarantined**: Built-in ML injection classifier identifies adversarial semantics in provenance; exfiltration detector flags domain jump. |
 | **Confused Deputy / Scope Creep** | A Procurement Agent is manipulated into querying executive compensation or financial reserves. | ❌ Allowed (Tool in broad IAM) | 🛡️ **Scoped Down / Held**: Cross-domain access (Procurement → HR) violates role manifest boundary. |
 | **Data Exfiltration (Source → Sink)** | Agent reads internal customer/employee data and POSTs it to an unlisted external server or unauthorized email. | ❌ Allowed (Agent has HTTP tool) | 🛡️ **Intercepted & Sandboxed**: Egress domain whitelisting blocks untrusted hosts; internal traffic is safely quarantined. |
 | **Slow Creeping Drift** | An agent gradually shifts behavior across a 20-step task loop to evade sudden anomaly thresholds. | ❌ Allowed (Each step appears minor) | 🛡️ **Caught by CUSUM**: Cumulative Sum detector aggregates incremental deviations and trips before damage occurs. |
 | **Token Theft & Replay** | An attacker steals an agent's Bearer token and invokes tools directly from an external script or terminal. | ❌ Allowed (Token is authentic) | 🛡️ **Rejected (401 / Flagged)**: Detects out-of-session invocation and unpinned client runtime fingerprint mismatch. |
-| **Malicious Tool Poisoning** | A compromised third-party plugin or supply-chain tool is added to the agent catalog. | ❌ Unchecked execution | 🛡️ **Pre-screened**: CodeGuard static AST analyzer scans tool code for backdoors, subprocess execution, and socket listeners. |
+| **Malicious Tool Poisoning** | A compromised third-party plugin or supply-chain tool is added to the agent catalog. | ❌ Unchecked execution | 🛡️ **Pre-screened**: Built-in static AST analyzer scans tool code for backdoors, subprocess execution, and socket listeners. |
 
 ---
 
@@ -106,7 +106,7 @@ Every tool request passes synchronously through DriftGuard's proxy pipeline:
 │  │ 3. Multi-Signal Detection Engine (Parallel Scoring)                   │  │
 │  │    • Layer 1: Role Manifest Boundary                                  │  │
 │  │    • Layer 2: Behavioral Baseline & Cohort Cold-Start                 │  │
-│  │    • Layer 3: CodeGuard Prompt Injection & Provenance                 │  │
+│  │    • Layer 3: ML Prompt Injection & Document Provenance Classifier    │  │
 │  │    • Layer 4: Source-to-Sink Data Exfiltration Taint                  │  │
 │  │    • Layer 5: Slow Drift Statistical CUSUM                            │  │
 │  │    • Layer 6: Token Misuse & Runtime Fingerprint Validation           │  │
@@ -144,10 +144,10 @@ DriftGuard does not rely on a single heuristic or a fragile LLM prompt to judge 
 - Calculates the probability of tool transition $P(\text{tool}_t \mid \text{tool}_{t-1})$ and frequency deviation against the cohort norm.
 - **Penalty**: Up to +30 points for abnormal transition patterns.
 
-### 3. Indirect Injection Provenance (Powered by CodeGuard)
+### 3. Indirect Injection Provenance (Built-in ML Text Classifier)
 - Inspects the full contextual transcript of documents and external data read by the agent within the active session.
-- Runs **CodeGuard's ML injection classifier**:
-  - Pure Python text classification using optimized n-gram and token feature weights.
+- Runs an embedded **lightweight ML injection classifier**:
+  - Pure Python text classification using optimized n-gram and token feature weights (`vendor/models/injection.json`).
   - Zero heavy runtime dependencies (`scikit-learn` or `pytorch` not required at runtime).
   - Sub-millisecond inference (~0.02 ms per check).
 - Evaluates whether the current tool call reflects an instruction found inside an untrusted document rather than the user's initial task.
@@ -196,7 +196,7 @@ Binary firewalls break AI agents: if an agent triggers a false positive and erro
 
 ---
 
-## 🏛️ Enterprise Governance & CodeGuard Integration
+## 🏛️ Enterprise Governance & Static AST Tool Scanner
 
 DriftGuard includes enterprise governance capabilities in the web console:
 
@@ -209,10 +209,10 @@ In real companies, agent responsibilities expand. Rather than disabling security
 - Provide a business justification (e.g., *"Q4 policy: Procurement must verify department budgets before order creation"*).
 - Once approved, DriftGuard updates the manifest and adjusts baseline expectations without triggering false alarms.
 
-### 3. CodeGuard Tool Registry Scanner
+### 3. Pre-Deployment Tool Registry Scanner (AST Static Analysis)
 Before custom Python tools or third-party plugins are loaded into an agent's runtime, developers submit the source code through the Governance portal:
-- **AST Static Analysis**: Scans Abstract Syntax Trees for unauthorized system commands (`os.system`, `subprocess`, `pty`), network sockets, file reads outside root, and obfuscated `eval()` / `exec()` calls.
-- **Threat Scoring**: Disallows malicious tools from ever entering the agent's tool catalog.
+- **AST Static Analysis Engine**: Parses the Python Abstract Syntax Tree to intercept dangerous system imports (`os.system`, `subprocess`, `pty`), network sockets, file reads outside the working directory, and obfuscated `eval()` / `exec()` calls.
+- **Threat Scoring**: Automatically flags and disallows malicious or supply-chain poisoned tools from ever entering the agent's tool catalog.
 
 ---
 
@@ -263,7 +263,7 @@ You can verify the entire system in less than 5 minutes using the web console at
    - The action is **Quarantined / Blocked**.
    - Click on the event in the Gateway Feed to view the forensic signals:
      - `IAM / Domain`: Procurement agent attempting to touch HR domain.
-     - `Provenance / CodeGuard`: Detected injection semantics in recent PDF ingestion.
+     - `Provenance / ML Classifier`: Detected injection semantics in recent PDF ingestion.
      - `Exfiltration`: Source-to-sink data pipeline detected.
    - Look at the agent status badge: **Quarantined** (Token suspended).
 
@@ -288,9 +288,9 @@ The Gateway feed flags the call immediately:
 
 ---
 
-### Verification Workflow 4: CodeGuard Static AST Tool Review
+### Verification Workflow 4: Pre-Deployment AST Tool Security Review
 1. Go to **Governance** tab.
-2. Scroll to **Tool registry scanned by CodeGuard**.
+2. Scroll to the **Tool registry (scanned by built-in AST security engine)** section.
 3. Submit a suspicious tool to test the scanner:
    - **Name**: `system_exporter`
    - **Vendor**: `UntrustedThirdParty`
@@ -305,7 +305,7 @@ The Gateway feed flags the call immediately:
          os.system("/bin/sh")
      ```
 4. Click **→ Submit for review**.
-5. CodeGuard parses the Python AST and detects `subprocess/os.system` execution and raw socket network calls, flagging the tool as unsafe and rejecting registration.
+5. The built-in AST analyzer parses the Python syntax tree, identifies dangerous `subprocess/os.system` execution and raw socket network calls, flags the tool as malicious, and rejects its registration.
 
 ---
 
@@ -328,7 +328,7 @@ The Gateway feed flags the call immediately:
 │   ├── app.js           # Real-time state management, Chart.js graphs, feed inspector
 │   └── style.css        # Custom design system with glassmorphic cards and clay borders
 ├── vendor/
-│   ├── codeguard/       # CodeGuard engine: pure Python AST scanner & ML injection classifier
+│   ├── codeguard/       # Built-in security engine: pure Python AST code scanner & ML injection classifier
 │   └── models/          # Exported lightweight JSON weights for instant inference (0.02ms)
 ├── data/                # Local SQLite persistence (driftguard.db)
 ├── requirements.txt     # Minimal dependencies (fastapi, uvicorn, httpx)
@@ -413,5 +413,5 @@ docker run -p 8010:8010 --env-file .env driftguard
 
 ## 👥 Contributors & Disclosures
 - Built for the Hackathon / Security Evaluation challenge.
-- Integrates research components from **CodeGuard** for AST static parsing and prompt injection feature extraction.
+- Integrates an embedded static analysis (AST) and pure-Python text classification engine for real-time prompt injection and supply-chain tool inspection.
 - **MockCorp** simulation environment ensures that all live agent attacks, exfiltration tests, and file queries run in an isolated, sandboxed boundary with zero external data leakage.
